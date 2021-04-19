@@ -1,8 +1,12 @@
 import java.io.BufferedInputStream;
+import java.io.*;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.net.Socket;
+import java.security.PublicKey;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 
 public class ClientWithoutSecurity {
 
@@ -29,9 +33,24 @@ public class ClientWithoutSecurity {
 
 		long timeStarted = System.nanoTime();
 
+		
+		
+
 		try {
 
 			System.out.println("Establishing connection to server...");
+
+			// Create X509Certificate object
+			InputStream fis = new FileInputStream("certificate_1004627.crt");
+			CertificateFactory cf = CertificateFactory.getInstance("X.509");
+			X509Certificate CAcert = (X509Certificate)cf.generateCertificate(fis);
+
+			//Extract Public Key from X509Certificate Object
+			PublicKey p_key = CAcert.getPublicKey();
+
+			// Check validity and verify signed certificate
+			CAcert.checkValidity();
+			CAcert.verify(p_key);
 
 			// Connect to server and get the input and output streams
 			clientSocket = new Socket(serverAddress, port);
