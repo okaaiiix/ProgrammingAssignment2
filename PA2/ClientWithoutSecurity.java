@@ -41,7 +41,7 @@ public class ClientWithoutSecurity {
 			System.out.println("Establishing connection to server...");
 
 			// Create X509Certificate object
-			InputStream fis = new FileInputStream("certificate_1004627.crt");
+			InputStream fis = new FileInputStream("cacsertificate.crt");
 			CertificateFactory cf = CertificateFactory.getInstance("X.509");
 			X509Certificate CAcert = (X509Certificate)cf.generateCertificate(fis);
 
