@@ -1,78 +1,44 @@
 import java.io.BufferedInputStream;
-import java.io.*;
+import java.io.BufferedOutputStream;
+import java.io.InputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.PublicKey;
+import java.security.PrivateKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.X509EncodedKeySpec;
 import javax.crypto.Cipher;
-import java.util.Random;
 import java.util.Arrays;
-import java.util.Base64;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.nio.ByteBuffer;
 
 public class ClientCP1 {
 
-
-    public static PublicKey getServerPublicKeyFromDerFile(String filename) throws Exception{
-        
-        byte[] keyBytes = Files.readAllBytes(Paths.get(filename)); 
-        X509EncodedKeySpec keySpec = new X509EncodedKeySpec(keyBytes);
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        return keyFactory.generatePublic(keySpec);
-    }
-
-    public static PublicKey getServerPublicKeyFromCertAndVerifyKey(X509Certificate serverCert) throws Exception{
-        // Get server public key 
-		PublicKey serverKey = serverCert.getPublicKey();
-		//PublicKey serverKey = getPublicKey(public_key.der); 
-//TESTING ON GETTING KEYS - SERVER       
-        
-        // Create X509Certificate object of CAcert
-		InputStream fis = new FileInputStream("cacsertificate.crt");
-		CertificateFactory cf = CertificateFactory.getInstance("X.509");
-		X509Certificate CAcert = (X509Certificate)cf.generateCertificate(fis);
-
-		// Extract CA Public Key from X509Certificate Object 
-		PublicKey p_key = CAcert.getPublicKey();
-
-		// Check validity and verify signed certificate
-		CAcert.checkValidity();
-		CAcert.verify(p_key);
-
-        return serverKey; 
-    }
-
 	public static void main(String[] args) {
 
-        String serverAddress = "localhost"; 
-        int port = 4321;
+    	String filename = "100.txt";
+    	if (args.length > 0) filename = args[0];
 
-        // Send multiple files 
-        String[] filenames = {"100.txt", "200.txt", "500.txt", "1000.txt", "5000.txt", "10000.txt", "50000.txt", "100000.txt"}; 
-        if(args.length > 0){
-            filenames = new String[args.length];
-            for(int i = 0; i < args.length; i++){
-                filenames[i] = args[i];
-            }
-        }
+		// Send multiple files
+		int filenames = args.length;
+		int count = 0;
+		filename = args[count];
 
-//THESE NO LONGER REQUIRED? 
-    	// String filename = "100.txt"; 
-    	// if (args.length > 0) filename = args[0];
+    	String serverAddress = "localhost";
+    	//if (args.length > 1) filename = args[1];
 
-    	// //String serverAddress = "localhost";
-    	// if (args.length > 1) filename = args[1];
+    	int port = 4321;
+    	//if (args.length > 2) port = Integer.parseInt(args[2]);
 
-    	// //int port = 4321;
-    	// if (args.length > 2) port = Integer.parseInt(args[2]);
-
-		//int numBytes = 0;
+		int numBytes = 0;
 
 		Socket clientSocket = null;
 
@@ -83,157 +49,202 @@ public class ClientCP1 {
         BufferedInputStream bufferedFileInputStream = null;
 
 		long timeStarted = System.nanoTime();
-
-		
 		
 
 		try {
 
 			System.out.println("Establishing connection to server...");
 
-//ADDER TO THE TOP 
-			// // Create X509Certificate object
-			// InputStream fis = new FileInputStream("cacsertificate.crt");
-			// CertificateFactory cf = CertificateFactory.getInstance("X.509");
-			// X509Certificate CAcert = (X509Certificate)cf.generateCertificate(fis);
-
-			// //Extract Public Key from X509Certificate Object
-			// PublicKey p_key = CAcert.getPublicKey();
-
-			// // Check validity and verify signed certificate
-			// CAcert.checkValidity();
-			// CAcert.verify(p_key);
+			byte[] encryptedMsg = new byte[128];
+			int nonce = 0;
 
 			// Connect to server and get the input and output streams
 			clientSocket = new Socket(serverAddress, port);
 			toServer = new DataOutputStream(clientSocket.getOutputStream());
 			fromServer = new DataInputStream(clientSocket.getInputStream());
 
-            PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+			// Get server Public Key 
+			PublicKey publicKey = getPublicKey("public_key.der");
 
-            // Get oneTimeNonce for server
-            System.out.println("Generating and sending nonce to server...");
-            byte[] oneTimeNonce = new byte[32]; 
-            new Random(). nextBytes(oneTimeNonce);
-            toServer.writeInt(oneTimeNonce.length);
-            toServer.write(oneTimeNonce);
-            toServer.flush(); 
+			// Create RSA("RSA/ECB/PKCS1Padding") cipher object and initialize is as decrypt and encrypt mode, use PUBLIC key.
+			Cipher rsaCipher_decrypt = Cipher.getInstance("RSA/ECB/PKCS1Padding"); 
+			rsaCipher_decrypt.init(Cipher.DECRYPT_MODE, publicKey);
+			Cipher rsaCipher_encrypt = Cipher.getInstance("RSA/ECB/PKCS1Padding"); 
+			rsaCipher_encrypt.init(Cipher.ENCRYPT_MODE, publicKey);
 
-            // Get encrypted oneTimeNonce from server 
-            int numBytesEncryptedNonce = fromServer.readInt();
-            byte[] encryptedNonce = new byte[numBytesEncryptedNonce]; 
-            fromServer.readFully(encryptedNonce, 0, numBytesEncryptedNonce);
+			System.out.println("Authenticating...");
 
-            // Create X509Certificate object of serverCert
-            CertificateFactory cf = CertificateFactory.getInstance("X.509");
-            X509Certificate serverCert = (X509Certificate)cf.generateCertificate(fromServer);
-            
-            // Extract Server Public Key from X509Certificate Object
-            PublicKey server_p_key = getServerPublicKeyFromCertAndVerifyKey(serverCert);
+			// if packetType == 0, send filename to server
+			// if packetType == 1, send content to server
+			// if packetType == 2, request proof of server identity  
 
-            // Create RSA("RSA/ECB/PKCS1Padding") cipher object and initialize is as decrypt mode, use PUBLIC key
-            Cipher rsaCipher_decrypt = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-            rsaCipher_decrypt.init(Cipher.DECRYPT_MODE, server_p_key);
-                     
-            // Decrypte encrypted oneTimeNonce
-            byte[] decryptedNonce = rsaCipher_decrypt.doFinal(encryptedNonce);
+			String message = "Hello SecStore, please prove your identity";
+			toServer.writeInt(2); 
+			toServer.writeInt(message.getBytes().length);
+			toServer.write(message.getBytes());
 
-            // Verify decrypted oneTimeNonce - if not equal, fail
-            if(!Arrays.equals(oneTimeNonce, decryptedNonce)){
-				writer.println("NO HANDSHAKE");
-                toServer.close(); 
-                fromServer.close();
-                writer.close();
-                reader.close();
-                clientSocket.close();
-            }
+			FileOutputStream fileOutputStream = new FileOutputStream("recv_cacsertificate.crt");
+			BufferedOutputStream bufferedFileOutputStream = new BufferedOutputStream(fileOutputStream);
 
-            System.out.println("Sending file...");
-            
-            // For sending multiple files
-            for(int i = 0; i < filenames.length; i++){
+			// if packetType == 3, request encryptedMsg to be decrypted 
+			// if packetType == 4, request CAcert 
+			// if packetType == 5, receive encrypted nonce 
+			// if packetType == 6, receive CAcert 
 
-			    // Send the filename
-			    toServer.writeInt(0);
-			    toServer.writeInt(filenames[i].getBytes().length);
-			    toServer.write(filenames[i].getBytes());
-			    toServer.flush();
+			while (!clientSocket.isClosed()) { //waiting 
 
-			    // Open the file
-			    fileInputStream = new FileInputStream(filenames[i]);
-			    bufferedFileInputStream = new BufferedInputStream(fileInputStream);
+				int packetType = fromServer.readInt();
 
-	            byte [] fromFileBuffer = new byte[117];
+				if (packetType == 3) {
+					int encryptedNumBytes = fromServer.readInt();
+					encryptedMsg = new byte[encryptedNumBytes];
+					fromServer.readFully(encryptedMsg, 0, encryptedNumBytes);
+	
 
-                int numBytes = 0;
-                int numBytesEncrypted = 0; 
+					String request = "Give me your certificate signed by CA";
+					toServer.writeInt(4);
+					toServer.writeInt(request.getBytes().length);
+					toServer.write(request.getBytes());
+					System.out.println("Client sent message: " + request);
 
-	            // Send the file
-	            for (boolean fileEnded = false; !fileEnded;) {
-			        numBytes = bufferedFileInputStream.read(fromFileBuffer);
-				    fileEnded = numBytes < 117;
 
-                    //Create RSA("RSA/ECB/PKCS1Padding") cipher object and initialize is as encrypt mode, use PRIVATE key.
-                    Cipher rsaCipher_encrypt = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-                    rsaCipher_encrypt.init(Cipher.ENCRYPT_MODE, server_p_key);
+				} else if (packetType == 5) {
 
-                    // Encrypt file
-                    byte[] encryptedFile = rsaCipher_encrypt.doFinal(fromFileBuffer); 
-                    
-                    numBytesEncrypted = encryptedFile.length; 
+					int auth = fromServer.readInt();
+					byte[] encryptedNonceBytes = new byte[auth];
+					fromServer.readFully(encryptedNonceBytes, 0, auth);
+					byte[] nonceBytes = rsaCipher_decrypt.doFinal(encryptedNonceBytes);
+					ByteBuffer byteBuffer = ByteBuffer.wrap(nonceBytes);
+					nonce = byteBuffer.getInt();
+					System.out.println("Nonce received: " + nonce);
 
-				    toServer.writeInt(1);
-				    toServer.writeInt(numBytes);
-				    toServer.write(encryptedFile);
-				    toServer.flush();
-			    }
 
-	            bufferedFileInputStream.close();
-	            fileInputStream.close();
+				} else if (packetType == 6) {
 
-            }
+					int cert = fromServer.readInt();
+					byte[] certBytes = new byte[cert];
+					fromServer.readFully(certBytes, 0, cert);
 
-            toServer.writeInt(2); // file sent
+					if (cert > 0) {
+						bufferedFileOutputStream.write(certBytes, 0, cert);
+					}
 
-//SEND TO THE FOR LOOP FOR MULTIPLE FILES
-			// // Send the filename
-			// toServer.writeInt(0);
-			// toServer.writeInt(filename.getBytes().length);
-			// toServer.write(filename.getBytes());
-			// //toServer.flush();
+					if (cert < 117) {
+						if (bufferedFileOutputStream != null) bufferedFileOutputStream.close();
+						if (bufferedFileOutputStream != null) fileOutputStream.close();
 
-			// // Open the file
-			// fileInputStream = new FileInputStream(filename);
-			// bufferedFileInputStream = new BufferedInputStream(fileInputStream);
+						System.out.println("CAcert received");
 
-	        // byte [] fromFileBuffer = new byte[117];
+						InputStream fis = new FileInputStream("cacsertificate.crt");
+						CertificateFactory cf = CertificateFactory.getInstance("X.509");
+						X509Certificate serverCert =(X509Certificate)cf.generateCertificate(fis);
 
-	        // // Send the file
-	        // for (boolean fileEnded = false; !fileEnded;) {
-			// 	numBytes = bufferedFileInputStream.read(fromFileBuffer);
-			// 	fileEnded = numBytes < 117;
+						PublicKey p_key = serverCert.getPublicKey();
+						PublicKey server_p_key = getPublicKey("./public_key.der");
 
-			// 	toServer.writeInt(1);
-			// 	toServer.writeInt(numBytes);
-			// 	toServer.write(fromFileBuffer);
-			// 	toServer.flush();
-			// }
+						serverCert.checkValidity();
+						serverCert.verify(p_key);
 
-	        // bufferedFileInputStream.close();
-	        // fileInputStream.close();
+						System.out.println("Certificate verified!");
 
-			System.out.println("Closing connection...");
+						// Decrypt message with server_p_key
+						byte[] messageBytes = rsaCipher_decrypt.doFinal(encryptedMsg);
+						message = new String(messageBytes, StandardCharsets.UTF_8);
+						System.out.println("Decrypted message: " + message);
 
-            toServer.close(); 
-            fromServer.close();
-            writer.close();
-            reader.close();
-            clientSocket.close();
+
+						// Checking if the message is from server if not close socket connection 
+						boolean success = message.equals("Hello, this is SecStore");
+
+						if (!success) {
+							fromServer.close();
+							toServer.close();
+							clientSocket.close();
+							
+						} else { // if packetType == 7, send back nonce to server 
+							toServer.writeInt(7);
+							toServer.writeInt(nonce);
+
+
+							// if packetType == 0, send filename to server - as mentioned earlier
+							while (count <= filenames - 1) {
+								System.out.println("Sending file..." + filename); 
+								toServer.writeInt(0); 
+								toServer.writeInt(filename.getBytes().length);
+								toServer.write(filename.getBytes());
+
+								// Open the file
+								FileInputStream filesInputStream = new FileInputStream(filename);
+								BufferedInputStream bufferedFilesInputStream = new BufferedInputStream(filesInputStream);
+
+								byte [] fromFileBuffer = new byte[117];
+
+								// if packetType == 1, send content to server - as mentioned earlier
+								for (boolean fileEnded = false; !fileEnded;) {
+									numBytes = bufferedFilesInputStream.read(fromFileBuffer);
+									fileEnded = numBytes < 117;
+									if (fileEnded == true) {
+										fromFileBuffer = Arrays.copyOfRange(fromFileBuffer, 0, numBytes);
+									}
+
+									byte[] encryptedFromFileBuffer = rsaCipher_encrypt.doFinal(fromFileBuffer);
+
+									toServer.writeInt(1); 
+									toServer.writeInt(encryptedFromFileBuffer.length);
+									toServer.writeInt(numBytes);
+									toServer.write(encryptedFromFileBuffer);
+									toServer.flush();
+								}
+
+								// Send the last file before closing socket connection 
+								toServer.writeInt(1);
+								toServer.writeInt(0);
+								//toServer.writeInt(0); // WHY ADDITIONAL 0
+								System.out.println("Total number of files left: " + (filenames - 1 - count));
+								toServer.writeInt(filenames - 1 - count); 
+
+
+								// Final check if all files are sent 
+								byte[] checking = "closing".getBytes();
+								fromServer.readFully(checking, 0, checking.length);
+								String check = new String(checking, StandardCharsets.UTF_8);
+								boolean completed = (count == filenames - 1);
+
+								if (check.equals("closing") && completed == true) {
+									System.out.println("Closing socket connection...");
+									count ++; //count = count + 1;
+
+									if (bufferedFilesInputStream != null) {
+										bufferedFilesInputStream.close();
+										filesInputStream.close();
+									}
+							
+									fromServer.close();
+									toServer.close();
+									clientSocket.close();
+
+								} else {
+									count ++; //count = count + 1;
+									filename = args[count];
+								}
+							}
+						}
+					}
+				} 
+			}
 
 		} catch (Exception e) {e.printStackTrace();}
 
 		long timeTaken = System.nanoTime() - timeStarted;
 		System.out.println("Program took: " + timeTaken/1000000.0 + "ms to run");
+	}
+
+
+	public static PublicKey getPublicKey(String filename) throws Exception {
+ 
+		byte[] keyBytes = Files.readAllBytes(Paths.get(filename));
+		X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
+		KeyFactory kf = KeyFactory.getInstance("RSA");
+		return kf.generatePublic(spec);
 	}
 }
