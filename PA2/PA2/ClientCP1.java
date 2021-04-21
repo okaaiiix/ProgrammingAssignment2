@@ -199,7 +199,7 @@ public class ClientCP1 {
 								// Send the last file before closing socket connection 
 								toServer.writeInt(1);
 								toServer.writeInt(0);
-
+								toServer.writeInt(0);
 								System.out.println("Total number of files left: " + (filenames - 1 - count));
 								toServer.writeInt(filenames - 1 - count); 
 
