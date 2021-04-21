@@ -86,7 +86,7 @@ public class ClientCP1 {
 			FileOutputStream fileOutputStream = new FileOutputStream("recv_cacsertificate.crt");
 			BufferedOutputStream bufferedFileOutputStream = new BufferedOutputStream(fileOutputStream);
 
-			// if packetType == 3, request encryptedMsg to be decrypted 
+			// if packetType == 3, receive encryptedMsg to be decrypted 
 			// if packetType == 4, request CAcert 
 			// if packetType == 5, receive encrypted nonce 
 			// if packetType == 6, receive CAcert 
