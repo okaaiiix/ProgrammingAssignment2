@@ -7,6 +7,14 @@ import java.net.Socket;
 import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
+import java.security.spec.X509EncodedKeySpec;
+import java.security.cert.CertificateFactory;
+import javax.crypto.Cipher;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
+import java.io.*;
 
 public class ServerCP1 {
 
@@ -15,7 +23,7 @@ public class ServerCP1 {
         byte[] keyBytes = Files.readAllBytes(Paths.get(filename)); 
         X509EncodedKeySpec keySpec = new X509EncodedKeySpec(keyBytes);
         KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        return keyFactory.generatePrivate(keySpec;)
+        return keyFactory.generatePrivate(keySpec);
     }
 
 	public static void main(String[] args) {
@@ -65,7 +73,7 @@ public class ServerCP1 {
 			toClient.flush(); 
 
 			while(true){
-				String readString = in.readLine();4
+				String readString = reader.readLine();
 				if(readString.equals("NO HANDSHAKE")){ //fail verification
 					toClient.close(); 
 					fromClient.close();
@@ -73,6 +81,7 @@ public class ServerCP1 {
 					reader.close();
 					connectionSocket.close();
 				}
+				else{break;}
 			}
 
             while (!connectionSocket.isClosed()) {
@@ -95,23 +104,41 @@ public class ServerCP1 {
 
 				// If the packet is for transferring a chunk of the file
 				} else if (packetType == 1) {
+// IS THIS NEEDED *
+					//int numBytesEncrypted = fromClient.readInt();
 
 					int numBytes = fromClient.readInt();
-					byte [] block = new byte[numBytes];
-					fromClient.readFully(block, 0, numBytes);
+					byte [] block = new byte[numBytes];//*
+					fromClient.readFully(block, 0, numBytes);//*
+
+					// Create RSA("RSA/ECB/PKCS1Padding") cipher object and initialize is as decrypt mode, use PUBLIC key
+					Cipher rsaCipher_decrypt = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+					rsaCipher_decrypt.init(Cipher.DECRYPT_MODE, privateKey);
+							  
+					// Decrypte encrypted oneTimeNonce
+					byte[] decryptedBlock = rsaCipher_decrypt.doFinal(block);
 
 					if (numBytes > 0)
-						bufferedFileOutputStream.write(block, 0, numBytes);
+						bufferedFileOutputStream.write(decryptedBlock, 0, numBytes);
 
 					if (numBytes < 117) {
-						System.out.println("Closing connection...");
+						//System.out.println("Closing connection...");
 
 						if (bufferedFileOutputStream != null) bufferedFileOutputStream.close();
 						if (bufferedFileOutputStream != null) fileOutputStream.close();
-						fromClient.close();
-						toClient.close();
-						connectionSocket.close();
+						// fromClient.close();
+						// toClient.close();
+						// connectionSocket.close();
 					}
+					
+				} else if (packetType == 2){
+					System.out.println("Closing connection...");
+					toClient.close(); 
+					fromClient.close();
+					writer.close();
+					reader.close();
+					connectionSocket.close();
+
 				}
 
 			}

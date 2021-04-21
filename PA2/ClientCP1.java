@@ -5,6 +5,7 @@ import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.net.Socket;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
@@ -13,18 +14,18 @@ import java.security.spec.X509EncodedKeySpec;
 import javax.crypto.Cipher;
 import java.util.Random;
 import java.util.Arrays;
+import java.util.Base64;
 
 public class ClientCP1 {
 
-//THIS IS EVEN REQUIRED - NOT EVEN USED 
-//     public static PublicKey getServerPublicKeyFromDerFile(String filename) throws Exception{
+
+    public static PublicKey getServerPublicKeyFromDerFile(String filename) throws Exception{
         
-//         byte[] keyBytes = Files.readAllBytes(Paths.get(filename)); 
-// // issue here on file ^ need to solve 
-//         X509EncodedKeySpec keySpec = new X509EncodedKeySpec(keyBytes);
-//         KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-//         return keyFactory.generatePublic(keySpec);
-//     }
+        byte[] keyBytes = Files.readAllBytes(Paths.get(filename)); 
+        X509EncodedKeySpec keySpec = new X509EncodedKeySpec(keyBytes);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        return keyFactory.generatePublic(keySpec);
+    }
 
     public static PublicKey getServerPublicKeyFromCertAndVerifyKey(X509Certificate serverCert) throws Exception{
         // Get server public key 
